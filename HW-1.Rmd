@@ -1,6 +1,6 @@
 ---
 title: "MATH 216 Homework 1"
-author: "WRITE YOUR NAME HERE"
+author: "Nina Sonneborn"
 output:
   html_document:
     toc: true
@@ -9,11 +9,13 @@ output:
     smooth_scroll: false
 ---
 
-```{r, echo=FALSE, message=FALSE, cache=TRUE}
+```{r, echo=FALSE, message=FALSE}
 library(ggplot2)
 library(dplyr)
 # For read_csv() command, which is an improved version of base R's read.csv()
-library(readr) 
+library(readr)
+library(hflights)
+library(knitr)
 
 # Load data sets. Note this assumes this .Rmd files is in the same directory as
 # the .csv files.
@@ -34,11 +36,11 @@ states <- read_csv("data/states.csv")
 
 Please indicate
 
-* Who you collaborated with:
-* Roughly how much time you spent on this HW so far:
-* The URL of the RPubs published URL [here](https://www.nhl.com/).
-* What gave you the most trouble:
-* Any comments you have:
+* Who you collaborated with: Amanda, Katherine, Kyler
+* Roughly how much time you spent on this HW so far: 5 hours
+* The URL of the RPubs published URL [here](http://rpubs.com/nsonneborn/hw1).
+* What gave you the most trouble: all about the same
+* Any comments you have: see comments in code
 
 
 
@@ -56,6 +58,43 @@ Using this plot, indicate describe the
 minutes tend to occur.
 
 ```{r, echo=FALSE, message=FALSE, fig.width=12, fig.height=6}
+# using departure delays, as this only data from one airport
+# Add boolean variable "over_30" to show whether departure delay was over 30 min
+flights <- flights %>%
+  mutate(over_30 = ifelse(dep_delay > 30 ,TRUE, FALSE))
+
+# Add variable "p_delayed" to show proportion of flight delays over 30 min on each date
+# *Note:* Before drawing any conclusions, I should investigate whether there is a pattern to
+# when there are missing values. By removing them, I could be missing something.
+flights <- flights %>%
+  group_by(date) %>%
+  mutate(p_delayed = sum(over_30 == TRUE, na.rm=TRUE)/
+           (sum(over_30 == TRUE, na.rm = TRUE) + 
+              sum(over_30 == FALSE, na.rm=TRUE)))
+
+# Plot seasonality of departure delays
+seasonal_delays <-  flights %>%
+  ggplot(aes(x=date, y=p_delayed)) +
+  geom_point() +
+  ggtitle("Seasonality of Departure Delays at IAH in 2011") +
+  xlab("Date") +
+  ylab("Proportion of departures delayed for over 30 minutes")
+
+seasonal_delays
+# Outliers may be obscuring seasonal trends by screwing up y scale
+# Perhaps I could bin into months and then do some box plots
+
+# Let's try that...
+seasonal_delays_box <-  flights %>%
+  ggplot(aes(x=as.factor(lubridate::month(date)), y=p_delayed)) +
+  geom_boxplot() +
+  ggtitle("Seasonality of Departure Delays at IAH in 2011") +
+  xlab("Month") + #  I could change labels from numbers to month in words.. But not right now
+  ylab("Proportion of departures delayed for over 30 minutes")
+
+seasonal_delays_box 
+# This still may not be the ideal visualization, but I like it better.
+# Those outliers though!!!
 
 ```
 
@@ -70,11 +109,50 @@ they tend to have more room.  Which airlines should these people favor?
 
 ```{r, echo=FALSE, fig.width=12, fig.height=6}
 
+# need to join flights and planes by "plane" and keep
+# only the plane, year variables from planes
+
+
+plane_yr <- planes %>%
+  select(plane, year) #let's keep only year and plane
+
+# at some point in this line or in plane_yr I should rename "year"
+# so that it isnt confused with flight date
+# But I'm not sure how that works
+flights <- full_join(plane_yr, flights, by = "plane") #join 'em
+
+
+oldest_planes <- flights %>%
+  group_by(carrier) %>%
+  summarise(mean_yr = mean(year, na.rm=TRUE)) %>%
+  arrange(mean_yr) 
+
+oldest_planes
+# This shows which airline, on average has the oldest planes. 
+# But what would really be effective is if we could see what year
+# planes started getting crammed and then look at proportion of 
+# planes from before that year .... 
 ```
 
+# Question 2 rethought
+GOOGLE KNOWS ALL!
+[USA today on airline seats](http://www.usatoday.com/story/travel/columnist/mcgee/2014/09/24/airplane-reclining-seat-pitch-width/16105491/) gives some input into the evolution of seat pitch and seat width of commercial airplanes over recent years.
+While different airlines have different ranges in seat pitch change, seat width took a dive around 1995.
+Thus, I'll look at proportion of planes made before '95 on each airline.
+```{r, recho=FALSE, fig.width=12, fig.height=6}
+flights <- flights %>% 
+  group_by(carrier) %>%
+  mutate(p_old = sum(year <= 1995, na.rm=TRUE)/
+           (sum(over_30 <= 1995, na.rm = TRUE) + sum(over_30 > 1995, na.rm=TRUE)))
+      # p_old shows the proportion of planes made before 1995 on each airline
 
-
-
+p_old <- flights %>%
+  group_by(carrier) %>%
+  summarise(p_old = mean(p_old, na.rm=TRUE)) %>%
+  arrange(desc(p_old))
+p_old
+```
+The first analysis, based on mean year the plane was made per airline, showed that MQ and AA had, on average, the oldest planes. However, this could easily be due to a few really old planes. This analysis shows US and DL as the carriers with the most planes made before 1995, and thus probably the most spacious economy seating. The second analysis, in my opinion, is more informative for the traveler who is interested in spacious seats.
 
 ## Question 3:
 
@@ -85,7 +163,31 @@ For example, Southwest Airlines Flight 60 to Dallas consists of a single flight
 path, but since it flew 299 times in 2013, it would be counted as 299 flights.
 
 ```{r, echo=FALSE, message=FALSE, fig.width=12, fig.height=6}
+# I'm gonna need to join airports and flights by "dest" = "iata"
+# filter so we only see southwest
+# What are all these carrier codes?
+# look here! https://www.census.gov/foreign-trade/reference/codes/aircarrier/acname.txt
+# Now I know what to filter by (Southwest Airlines is WN. I don't know why but okay)
 
+SWA <- full_join(flights, airports, by=c("dest" = "iata"))
+SWA <- SWA %>%
+  filter(carrier == "WN")
+
+
+# For flight, I should count each entry (all the rows)
+SWA_flights <- SWA %>%
+  count(state, sort = TRUE)
+
+SWA_flights
+
+
+# For flight path, I should count each distinct flight number 
+SWA_flight_paths <- SWA %>%
+  group_by(state) %>%
+  summarise(count = n_distinct(flight)) %>% # number of distinct flight #'s to each state
+  arrange(desc(count))
+
+SWA_flight_paths
 ```
 
 
@@ -99,5 +201,33 @@ carrier flies to/from Houston in the month of July.  Consider the `month()`
 function from the `lubridate` package.
 
 ```{r, echo=FALSE, message=FALSE, fig.width=12, fig.height=6}
+# Note: asking for "flies to/from Houston" but we only have data for destination.
+# First, I'll need to join flights with airports by "dest" = "iata" 
+july <- full_join(flights, airports, by = c("dest"="iata"))
+# Then join that with states by state
+july <- full_join(july, states, by="state")
+# Filter it to only july (and send my love to lubridate <3)
+july <- july %>%
+  filter(lubridate::month(date) == 07)
+# Select only the columns I want (date, flight, dest, state, region)
+july <- july %>%
+  select(date, flight, dest, state, region, carrier)
 
+# get the numbers I want
+regional_sums <- tally(group_by(july, carrier, region))
+regional_proportions <- regional_sums %>%
+  group_by(carrier) %>%
+  mutate(carrier_sum = sum(n)) %>%
+  mutate(proportion = n/carrier_sum)
+regional_proportions
+# this table is good except the demoninator in calculating the proportion includes the "NA" region.. how do I fix this?
+# there aren't too many missing values, but still.
+
+# make some bar graphs.. x = region, y = flight, facet by carrier
+regional_sums_plot <- regional_sums %>%
+  ggplot(aes(x=region, y = n, fill = region)) +
+  geom_bar(stat="identity") +
+  facet_wrap(~carrier, ncol = 5, scales = "free_y") +
+  ggtitle("Regional distribution of flights out of Houston in July of 2011")
+regional_sums_plot
 ```
