@@ -222,6 +222,8 @@ regional_sums_plot <- regional_sums %>%
   ggtitle("Regional distribution of flights out of Houston in July of 2011")
 regional_sums_plot
 ```
+
+
 Note: asking for "flies to/from Houston" but we only have data for destination.
 Note: only 3 "states"" are filed as NA: HI, AK, PR. In fact, then, the NA category is worth keeping, but thinking of as a new category (territories).
 
